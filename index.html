@@ -127,7 +127,7 @@
 					</section>
 				</section>
 				<section>
-					<h2>从 hello world 窥探 printf 的实现</h2>
+					<h2>从 hello world 窥探 printf 的实现 (nemu)</h2>
 					<pre data-id="code-animation"><code class="hljs txt" data-trim data-line-numbers>
 						0x800001d8: call [printf@0x80003f04] <- 调用 klib 中的 printf
 						0x80003f54:   call [vprintf@0x80005408]
@@ -142,6 +142,22 @@
 						[host]:                         map_write
 						[host]:                           invoke_callback -> serial_io_handler
 						[host]:                             serial_putc -> putc
+					</code></pre>
+				</section>
+				<section>
+					<h2>从 hello world 窥探 printf 的实现 (npc)</h2>
+					<pre data-id="code-animation"><code class="hljs txt" data-trim data-line-numbers>
+						0x800001d8: call [printf@0x80003f04] <- 调用 klib 中的 printf
+						0x80003f54:   call [vprintf@0x80005408]
+						0x8000543c:     call [__vprintf@0x80004a44]
+						0x80004ab4:       call [vprintf_helper@0x80005458]
+						0x80005498:         call [putch@0x80001a60]
+						0x80001a84:           call [outb@0x80001a24] <- mmio, 串口输出
+						[host]:                 [译码]
+						[host]:                   [访存]
+						[host]:                     [AXI4-Lite总线桥]
+						[host]:                       [AXI4LiteUartSlave]
+						[host]:                         [printf]
 					</code></pre>
 				</section>
 
