@@ -22,6 +22,12 @@
 					<p> 学校：哈尔滨工业大学（深圳） </p>
 				</section>
 
+				<!-- 自动生成的目录页 -->
+				<section id="toc">
+					<h2>目录</h2>
+					<ul id="toc-list" style="font-size: 0.7em; columns: 1; text-align: left;"></ul>
+				</section>
+
 				<section>
 					<section>
 						<h2>从 hello world 窥探 NEMU+AM 的协同工作</h2>
@@ -586,6 +592,46 @@
 
 				// Learn about plugins: https://revealjs.com/plugins/
 				plugins: [ RevealZoom, RevealNotes, RevealSearch, RevealMarkdown, RevealHighlight ]
+			});
+
+			// 自动生成目录
+			Reveal.on('ready', function() {
+				const tocList = document.getElementById('toc-list');
+				const sections = document.querySelectorAll('.slides > section');
+				let tocIndex = 0;
+				
+				sections.forEach((section, index) => {
+					// 跳过封面和目录页本身
+					if (index === 0 || section.id === 'toc') return;
+					
+					// 查找章节标题 (h2)
+					let title = null;
+					const h2 = section.querySelector('h2');
+					
+					// 如果是嵌套的 section（垂直幻灯片），查找第一个子 section 的 h2
+					if (!h2) {
+						const nestedH2 = section.querySelector('section h2');
+						if (nestedH2) title = nestedH2.textContent;
+					} else {
+						title = h2.textContent;
+					}
+					
+					if (title) {
+						tocIndex++;
+						const li = document.createElement('li');
+						li.style.marginBottom = '0.5em';
+						li.style.listStyleType = 'none';
+						
+						const link = document.createElement('a');
+						link.href = '#/' + index;
+						link.textContent = tocIndex + '. ' + title;
+						link.style.color = '#2a76dd';
+						link.style.textDecoration = 'none';
+						
+						li.appendChild(link);
+						tocList.appendChild(li);
+					}
+				});
 			});
 
 		</script>
