@@ -190,7 +190,7 @@
 
 				<section>
 					<section>
-						<h2>考核题目：充分理解打字小游戏</h2>
+						<h2>考核题目：充分理解打字小游戏（键盘输入）</h2>
 					</section>
 					<section>
 						<p>NEMU是如何处理键盘输入的？</p>
@@ -306,8 +306,42 @@
 							}
 						</code></pre>
 					</section>
-					<section>
+				</section>
 
+				<section>
+					<section>
+						<h2>考核题目：充分理解打字小游戏（游戏逻辑）</h2>
+					</section>
+					<section>
+						<p>typing-game主函数</p>
+						<pre data-id="code-animation"><code class="hljs c" data-trim data-line-numbers>
+							int main() {
+								ioe_init(); video_init();
+								int current = 0, rendered = 0;
+								const uint64_t t0 = io_read(AM_TIMER_UPTIME).us;
+								while (1) {
+									const int frames = (io_read(AM_TIMER_UPTIME).us - t0) / (1000000 / FPS);
+									for (; current < frames; current++) { game_logic_update(current); } // ⭐ 时间与游戏逻辑的同步
+									while (1) {
+										AM_INPUT_KEYBRD_T ev = io_read(AM_INPUT_KEYBRD);
+										if (ev.keycode == AM_KEY_NONE) { break; }
+										if (ev.keydown && ev.keycode == AM_KEY_ESCAPE) halt(0);
+										if (ev.keydown && lut[ev.keycode]) { check_hit(lut[ev.keycode]); }
+									}
+									if (current > rendered) {
+										render(); // 渲染
+										rendered = current;
+									}
+								}
+							}
+						</code></pre>
+						<small>
+							游戏的逻辑与时间是高度相关的。但是又因为游戏逻辑的更新与画面更新是串行的。
+							但是因为性能问题，会出现“理想游戏逻辑”与“实际游戏逻辑”不同步的情况。
+							也就是 ⭐ 这行代码中, 为什么要有 for 循环 （印象深刻的部分）
+						</small>
+					</section>
+					<section>
 					</section>
 				</section>
 
@@ -356,6 +390,9 @@
 				</section>
 
 				<section>
+					<section>
+						<h2>一些亮点与debug经历</h2>
+					</section>
 					<section>
 						<p>构建NPC时, 通过Copy-Paste, 复制了nemu的代码, 并将里面解释执行的部分, 替换成了verilator仿真执行的部分</p>
 						<pre data-id="code-animation"><code class="hljs c" data-trim data-line-numbers>
