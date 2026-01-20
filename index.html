@@ -342,6 +342,50 @@
 						</small>
 					</section>
 					<section>
+						<p>game_logic_update</p>
+						<pre data-id="code-animation"><code class="hljs c" data-trim data-line-numbers>
+							void game_logic_update(int frame) {
+								if (frame % (FPS / CPS) == 0) { new_char(); }
+								for (int i = 0; i < LENGTH(chars); i++) {
+									struct character *c = &chars[i];
+									if (c->ch) {
+										if (c->t > 0) {
+											if (--c->t == 0) { // (3)
+												c->ch = '\0';
+											}
+										} else {
+											c->y += c->v;
+											if (c->y < 0) { c->ch = '\0'; } // (1)
+											if (c->y + CHAR_H >= screen_h) { // (2)
+												miss++;
+												c->v = 0;
+												c->y = screen_h - CHAR_H;
+												c->t = FPS;
+											}
+										}
+									}
+								}
+							}
+						</code></pre>
+						<li>
+							<small>
+								(1) 在 check_hit 中，按对了会反转c的速度，因此game_logic_update中，y<0意味着按对了。
+								并将ch设置为'\0'，表示字符已经消失，所空出的槽位可以立刻给new_char使用
+							</small>
+						</li>
+						<li>
+							<small>
+								(2) y + CHAR_H >= screen_h 意味着c达到了屏幕的底部，意味着没有来得及按。
+								这个时候，并没有直接将ch设置为'\0'，而是延迟FPS帧，直到延迟结束才会进入(3)分支。
+								这意味着可以占用chars中的槽位，变相的降低了生成字符的频率。 （印象深刻的部分）
+							</small>
+						</li>
+					</section>
+				</section>
+
+				<section>
+					<section>
+						<h2>考核题目：充分理解打字小游戏（渲染）</h2>
 					</section>
 				</section>
 
