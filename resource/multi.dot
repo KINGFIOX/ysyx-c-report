@@ -1,0 +1,142 @@
+digraph NPCCore {
+    // ========== 外部接口 ==========
+    subgraph cluster_external {
+        label="外部接口";
+        style=dashed;
+        icache [label="ICache(AXI4Lite)", shape=cylinder, fillcolor="#E0E0E0"];
+        dcache [label="DCache(AXI4Lite)", shape=cylinder, fillcolor="#E0E0E0"];
+    }
+    
+    // ========== 取指阶段 ==========
+    subgraph cluster_fetch {
+        label="取指 (IF)";
+        style=filled;
+        fillcolor="#E3F2FD";
+        
+        ifu [label="IFU\n取指单元", fillcolor="#90CAF9"];
+    }
+    
+    // ========== 译码阶段 ==========
+    subgraph cluster_decode {
+        label="译码 (ID)";
+        style=filled;
+        fillcolor="#E8F5E9";
+        
+        cu [label="CU\n控制单元", fillcolor="#A5D6A7"];
+        igu [label="IGU\n立即数生成", fillcolor="#A5D6A7"];
+        rfu [label="RFU\n寄存器堆", fillcolor="#A5D6A7"];
+        csru [label="CSRU\nCSR寄存器", fillcolor="#A5D6A7"];
+    }
+    
+    // ========== 执行阶段 ==========
+    subgraph cluster_execute {
+        label="执行 (EX)";
+        style=filled;
+        fillcolor="#FFF3E0";
+        
+        alu [label="ALU\n算术逻辑单元", fillcolor="#FFCC80"];
+        bru [label="BRU\n分支单元", fillcolor="#FFCC80"];
+        
+        // MUX
+        mux_op1 [label="MUX\nOP1选择", shape=trapezium, fillcolor="#FFE0B2"];
+        mux_op2 [label="MUX\nOP2选择", shape=trapezium, fillcolor="#FFE0B2"];
+        mux_dnpc [label="MUX\nDNPC选择", shape=trapezium, fillcolor="#FFE0B2"];
+        mux_wb [label="MUX\nWB选择", shape=trapezium, fillcolor="#FFE0B2"];
+    }
+    
+    // ========== 访存阶段 ==========
+    subgraph cluster_memory {
+        label="访存 (MEM)";
+        style=filled;
+        fillcolor="#F3E5F5";
+        
+        lsu [label="LSU\n访存单元", fillcolor="#CE93D8"];
+    }
+    
+    // ========== 异常处理 ==========
+    subgraph cluster_exception {
+        label="异常处理";
+        style=filled;
+        fillcolor="#FFEBEE";
+        
+        excpu [label="EXCPU\n异常单元", fillcolor="#EF9A9A"];
+    }
+    
+    // ========== 锁存器 ==========
+    subgraph cluster_regs {
+        label="锁存器";
+        style=filled;
+        fillcolor="#FAFAFA";
+        
+        regs [label="锁存器\n(PC, IR, dnpc,\nrd, rf_wen, ...)", shape=rectangle, fillcolor="#BDBDBD"];
+    }
+    
+    // ========== 数据通路 ==========
+    
+    // 取指
+    icache -> ifu [label="inst"];
+    ifu -> icache [label="PC"];
+    
+    // IFU 输出
+    ifu -> cu [label="inst"];
+    ifu -> igu [label="inst[31:7]"];
+    ifu -> rfu [label="rs1, rs2"];
+    ifu -> mux_op1 [label="PC"];
+    ifu -> mux_dnpc [label="snpc"];
+    
+    // 控制信号
+    cu -> igu [label="immType", style=dashed, color="green"];
+    cu -> mux_op1 [label="aluSel1", style=dashed, color="green"];
+    cu -> mux_op2 [label="aluSel2", style=dashed, color="green"];
+    cu -> alu [label="aluOp", style=dashed, color="green"];
+    cu -> bru [label="bruOp", style=dashed, color="green"];
+    cu -> mux_dnpc [label="npcOp", style=dashed, color="green"];
+    cu -> mux_wb [label="wbSel", style=dashed, color="green"];
+    cu -> lsu [label="memOp", style=dashed, color="green"];
+    cu -> csru [label="csrOp", style=dashed, color="green"];
+    
+    // 立即数
+    igu -> mux_op2 [label="imm"];
+    igu -> csru [label="csr_addr"];
+    
+    // 寄存器堆
+    rfu -> mux_op1 [label="rs1_v"];
+    rfu -> mux_op2 [label="rs2_v"];
+    rfu -> bru [label="rs1_v, rs2_v"];
+    rfu -> lsu [label="rs2_v\n(store data)"];
+    rfu -> csru [label="rs1_v\n(csr wdata)"];
+    
+    // ALU
+    mux_op1 -> alu [label="op1"];
+    mux_op2 -> alu [label="op2"];
+    alu -> mux_dnpc [label="result\n(jal/jalr/br)"];
+    alu -> mux_wb [label="result"];
+    alu -> lsu [label="result\n(mem addr)"];
+    
+    // 分支
+    bru -> mux_dnpc [label="br_taken"];
+    
+    // CSR
+    csru -> mux_wb [label="rdata"];
+    csru -> mux_dnpc [label="xepc\n(mret)"];
+    csru -> excpu [label="xtvec"];
+    
+    // LSU
+    lsu -> dcache;
+    dcache -> lsu [label="rdata"];
+    lsu -> mux_wb [label="mem_rdata"];
+    
+    // 写回
+    mux_wb -> regs [label="rd_v"];
+    mux_dnpc -> regs [label="dnpc"];
+    regs -> rfu [label="writeback", color="red"];
+    regs -> ifu [label="dnpc", color="red"];
+    regs -> csru [label="csr write", color="red"];
+    
+    // 异常
+    ifu -> excpu [label="exception"];
+    cu -> excpu [label="exception"];
+    lsu -> excpu [label="exception"];
+    excpu -> csru [label="xcause, xepc,\nxtval", color="red"];
+    excpu -> regs [label="dnpc\n(xtvec)", color="red"];
+}

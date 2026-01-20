@@ -17,6 +17,7 @@
             nodejs_22
             nodePackages.gulp-cli
             git
+            graphviz
           ];
 
           shellHook = ''
