@@ -193,7 +193,7 @@
 						<h2>考核题目：充分理解打字小游戏（键盘输入）</h2>
 					</section>
 					<section>
-						<p>NEMU是如何处理键盘输入的？</p>
+						<p>NEMU是如何处理键盘输入的？（状态机视角）</p>
 						<pre data-id="code-animation"><code class="hljs c" data-trim data-line-numbers>
 							// nemu/src/cpu/cpu-exec.c
 							static void execute(uint64_t n) {
@@ -207,7 +207,7 @@
 						<small>有些类似于408考研题中的多周期CPU：取值->间址->执行->中断</small>
 					</section>
 					<section>
-						<p>“中断周期” NEMU 处理键盘输入</p>
+						<p>“中断周期” NEMU 处理键盘输入（状态机视角）</p>
 						<pre data-id="code-animation"><code class="hljs c" data-trim data-line-numbers>
 							// nemu/src/device/device.c
 							void device_update() {
@@ -238,7 +238,7 @@
 						</code></pre>
 					</section>
 					<section>
-						<p>typing-game轮询键盘输入</p>
+						<p>typing-game轮询键盘输入（静态视角）</p>
 						<pre data-id="code-animation"><code class="hljs c" data-trim data-line-numbers>
 							// am-kernels/kernels/typing-game/game.c
 							int main() {
@@ -266,7 +266,7 @@
 						</code></pre>
 					</section>
 					<section>
-						<p>NEMU处理AM的mmio请求</p>
+						<p>NEMU处理AM的mmio请求（状态机视角）</p>
 						<pre data-id="code-animation"><code class="hljs c" data-trim data-line-numbers>
 							// nemu/isa/riscv32/inst.c
 							static int decode(Decode * s) {
@@ -313,7 +313,7 @@
 						<h2>考核题目：充分理解打字小游戏（游戏逻辑）</h2>
 					</section>
 					<section>
-						<p>typing-game主函数</p>
+						<p>typing-game主函数（静态视角）</p>
 						<pre data-id="code-animation"><code class="hljs c" data-trim data-line-numbers>
 							int main() {
 								ioe_init(); video_init();
@@ -342,7 +342,7 @@
 						</small>
 					</section>
 					<section>
-						<p>game_logic_update</p>
+						<p>game_logic_update（静态视角）</p>
 						<pre data-id="code-animation"><code class="hljs c" data-trim data-line-numbers>
 							void game_logic_update(int frame) {
 								if (frame % (FPS / CPS) == 0) { new_char(); }
@@ -386,6 +386,92 @@
 				<section>
 					<section>
 						<h2>考核题目：充分理解打字小游戏（渲染）</h2>
+					</section>
+					<section>
+						<p>render（静态视角）</p>
+						<pre data-id="code-animation"><code class="hljs c" data-trim data-line-numbers>
+							void render() {
+								static int x[NCHAR], y[NCHAR], n = 0;
+								for (int i = 0; i < n; i++) { io_write(AM_GPU_FBDRAW, x[i], y[i], blank, CHAR_W, CHAR_H, false); }
+								n = 0;
+								for (int i = 0; i < LENGTH(chars); i++) {
+									struct character *c = &chars[i];
+									if (c->ch) {
+										x[n] = c->x; y[n] = c->y; n++;
+										// v > 0: white, 对应的下落, 还没按下
+										// v = 0: red, 对应的 miss
+										// v < 0: green, 对应的按对的
+										int col = (c->v > 0) ? WHITE : (c->v < 0 ? GREEN : RED);
+										io_write(AM_GPU_FBDRAW, c->x, c->y, texture[col][c->ch - 'A'], CHAR_W, CHAR_H, false);
+									}
+								}
+								io_write(AM_GPU_FBDRAW, 0, 0, NULL, 0, 0, true);
+								for (int i = 0; i < 40; i++) { putch('\b'); }
+								printf("Hit: %d; Miss: %d; Wrong: %d", hit, miss, wrong);
+							}
+						</code> </pre>
+					</section>
+					<section>
+						<p>利用ftrace分析io_write、AM的调用关系（状态机视角）</p>
+						<pre data-id="code-animation"><code class="hljs txt" data-trim data-line-numbers>
+							call [render@0x800002d4]
+							  call [ioe_write@0x800010f4]
+							    call [__am_gpu_fbdraw@0x80001944]
+							      call [inl@0x8000177c]
+							      ret [inl]
+							      call [outl@0x800017ac]
+								  ret [outl]
+						</code> </pre>
+					</section>
+					<section>
+						<p>类似8086的gpu内存地址映射（静态视角）</p>
+						<pre data-id="code-animation"><code class="hljs c" data-trim data-line-numbers>
+							// abstract-machine/klib/include/klib-macros.h
+							#define io_write(reg, ...) \
+							({ reg##_T __io_param = (reg##_T) { __VA_ARGS__ }; \
+							  ioe_write(reg, &__io_param); })
+							
+							// abstract-machine/am/src/platform/sim/ioe/gpu.c
+							void __am_gpu_fbdraw(AM_GPU_FBDRAW_T *ctl) {
+								int x = ctl->x, y = ctl->y;
+								int w = ctl->w, h = ctl->h;
+								if (!ctl->sync && (w == 0 || h == 0)) { return; }
+								uint32_t *pixels = ctl->pixels;
+								if (pixels == NULL && !(w == 0 && h == 0)) { return; }
+								uint32_t *fb = (uint32_t *)(uintptr_t)FB_ADDR;
+								uint32_t screen_w = inl(VGACTL_ADDR) >> 16;
+								volatile uint32_t *dst = fb + screen_w * y + x;
+								uint32_t *src = pixels;
+								for (size_t i = 0; i < h; i++) {
+									for (size_t j = 0; j < w; j++) { dst[j] = src[j]; }
+									// 考虑到 screen_w > w 的情况, 需要额外考虑
+									dst += screen_w; src += w;
+								}
+								if (ctl->sync) { outl(SYNC_ADDR, 1); }
+							}
+						</code> </pre>
+					</section>
+					<section>
+						<p>NEMU处的显示逻辑（状态机视角）</p>
+						<pre data-id="code-animation"><code class="hljs c" data-trim data-line-numbers>
+							// nemu/src/cpu/cpu-exec.c
+							static void execute(uint64_t n) {
+								Decode s;
+								for (; n > 0; n--) {
+									exec_once(&s, cpu.pc);
+									IFDEF(CONFIG_DEVICE, device_update());
+								}
+							}
+							// nemu/src/device/device.c
+							void device_update() { IFDEF(CONFIG_HAS_VGA, vga_update_screen()); }
+							// nemu/src/device/vga.c
+							void vga_update_screen() {
+								if (vgactl_port_base[1]) {
+									update_screen();
+									vgactl_port_base[1] = 0;
+								}
+							}
+						</code> </pre>
 					</section>
 				</section>
 
