@@ -192,6 +192,123 @@
 					<section>
 						<h2>考核题目：充分理解打字小游戏</h2>
 					</section>
+					<section>
+						<p>NEMU是如何处理键盘输入的？</p>
+						<pre data-id="code-animation"><code class="hljs c" data-trim data-line-numbers>
+							// nemu/src/cpu/cpu-exec.c
+							static void execute(uint64_t n) {
+								Decode s;
+								for (; n > 0; n--) {
+									exec_once(&s, cpu.pc);
+									IFDEF(CONFIG_DEVICE, device_update());
+								}
+							}
+						</code></pre>
+						<small>有些类似于408考研题中的多周期CPU：取值->间址->执行->中断</small>
+					</section>
+					<section>
+						<p>“中断周期” NEMU 处理键盘输入</p>
+						<pre data-id="code-animation"><code class="hljs c" data-trim data-line-numbers>
+							// nemu/src/device/device.c
+							void device_update() {
+								SDL_Event event;
+								while (SDL_PollEvent(&event)) {
+									switch (event.type) {
+									case SDL_KEYDOWN: case SDL_KEYUP: {
+										uint8_t k = event.key.keysym.scancode;
+										bool is_keydown = (event.key.type == SDL_KEYDOWN);
+										send_key(k, is_keydown);
+										break;
+									}
+									default: break;
+									}
+								}
+							}
+							// nemu/src/device/keyboard.c
+							void send_key(uint8_t scancode, bool is_keydown) {
+								if (nemu_state.state == NEMU_RUNNING && keymap[scancode] != NEMU_KEY_NONE) {
+									uint32_t am_scancode = keymap[scancode] | (is_keydown ? KEYDOWN_MASK : 0);
+									key_enqueue(am_scancode);
+								}
+							}
+							static void key_enqueue(uint32_t am_scancode) {
+								key_queue[key_r] = am_scancode;
+								key_r = (key_r + 1) % KEY_QUEUE_LEN;
+							}
+						</code></pre>
+					</section>
+					<section>
+						<p>typing-game轮询键盘输入</p>
+						<pre data-id="code-animation"><code class="hljs c" data-trim data-line-numbers>
+							// am-kernels/kernels/typing-game/game.c
+							int main() {
+								while (1) {
+									while (1) {
+										AM_INPUT_KEYBRD_T ev = ({
+											AM_INPUT_KEYBRD_T __io_param;
+											ioe_read(AM_INPUT_KEYBRD, &__io_param);
+											__io_param;
+										  });
+										if (ev.keycode == AM_KEY_NONE) { break; } // 循环出口
+										if (ev.keydown && ev.keycode == AM_KEY_ESCAPE) halt(0);
+										if (ev.keydown && lut[ev.keycode]) { check_hit(lut[ev.keycode]); }
+									};
+								}
+							}
+							// abstract-machine/am/src/platform/sim/ioe/ioe.c
+							void ioe_read (int reg, void *buf) { ((handler_t)lut[reg])(buf); }
+							// abstract-machine/am/src/platform/sim/ioe/input.c
+							void __am_input_keybrd(AM_INPUT_KEYBRD_T *kbd) {
+								uint32_t kc = inl(KBD_ADDR); // mmio
+								kbd->keydown = kc & KEYDOWN_MASK ? true : false;
+								kbd->keycode = kc & ~KEYDOWN_MASK;
+							}
+						</code></pre>
+					</section>
+					<section>
+						<p>NEMU处理AM的mmio请求</p>
+						<pre data-id="code-animation"><code class="hljs c" data-trim data-line-numbers>
+							// nemu/isa/riscv32/inst.c
+							static int decode(Decode * s) {
+								...
+								INSTPAT("xxx", lw     , I, R(rd) = Mr(src1 + imm, 4));
+								...
+							}
+							// nemu/src/memory/vaddr.c
+							word_t vaddr_read(vaddr_t addr, int len) { return paddr_read(addr, len); }
+							// nemu/src/memory/paddr.c
+							word_t paddr_read(paddr_t addr, int len) {
+								if (likely(in_pmem(addr))) { return pmem_read(addr, len); }
+								IFDEF(CONFIG_DEVICE, return mmio_read(addr, len));
+							}
+							// nemu/src/io/mmio.c
+							void mmio_write(paddr_t addr, int len, word_t data) {
+								IOMap *map = fetch_mmio_map(addr);
+								map_write(addr, len, data, map);
+							}
+							// nemu/src/io/map.c
+							void map_write(paddr_t addr, int len, word_t data, IOMap *map) {
+								paddr_t offset = addr - map->low;
+								host_write(map->space + offset, len, data);
+								invoke_callback(map->callback, offset, len, true);
+							}
+							// nemu/src/device/keyboard.c
+							static void i8042_data_io_handler(uint32_t offset, int len, bool is_write) {
+								i8042_data_port_base[0] = key_dequeue();
+							}
+							static uint32_t key_dequeue() {
+								uint32_t key = NEMU_KEY_NONE;
+								if (key_f != key_r) {
+									key = key_queue[key_f];
+									key_f = (key_f + 1) % KEY_QUEUE_LEN;
+								}
+								return key;
+							}
+						</code></pre>
+					</section>
+					<section>
+
+					</section>
 				</section>
 
 				<section>
@@ -254,7 +371,6 @@
 							static bool exec_once(Decode *s) {
 								return npc_core_step(s);
 							}
-	
 							// npc/src/cpu/core.cc
 							extern "C" bool npc_core_step(Decode *s) {
 								top->io_step = 1;
